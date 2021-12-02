@@ -4,6 +4,17 @@ import json
 
 
 def remove_distortion_from_image(image, params, show):
+    """
+    Removes distortion from image with given parameters
+    :param image: path to image to remove distortion from
+    :type image: str
+    :param params: path to file with camera matrix and distortion matrix
+    :type params: str
+    :param show: if the progress should be displayed
+    :type show: bool
+    :return: image with distortion removed
+    :rtype: np.ndarray
+    """
     mtx, dist = read_params(params)
     img = cv.imread(image)
     h, w = img.shape[:2]
