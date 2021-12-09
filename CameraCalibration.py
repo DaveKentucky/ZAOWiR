@@ -1,9 +1,77 @@
 import numpy as np
 import cv2 as cv
-from split_images import split_images
-from read_images import read_images
+from file_utils import write_indices_to_file as write_indices
+from file_utils import read_images
 import json
 import os
+import glob
+
+
+class CameraCalibration:
+    def __init__(self, chessboard_size, field_size):
+        self.chessboard_size = chessboard_size
+        w = chessboard_size[0]
+        h = chessboard_size[1]
+        # termination criteria
+        self.criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
+        self.object_points = np.zeros((w*h, 3), np.float32)
+        self.object_points[:, :2] = np.mgrid[0:w, 0:h].T.reshape(-1, 2)
+        self.object_points *= field_size
+        # Arrays to store object points and image points from all the images.
+        self.obj_points = []  # 3d point in real world space
+        self.img_points = []  # 2d points in image plane.
+
+    def split_images(self, folder, show):
+        """
+        Splits PNG images from given folder based on criteria
+        if calibration board visible on left, right or both cameras
+        :param folder: path to folder where the calibration images are stored
+        :type folder: str
+        :param show: if the progress should be displayed
+        :type show: bool
+            """
+        images = glob.glob(f'{folder}/*.png')
+        # dictionary storing indices of images with pattern visible in left, right or both cameras
+        indices = {
+            "left": [],
+            "right": [],
+            "left right": []
+        }
+        # save indices of images where the pattern is visible in left or right camera in proper lists
+        for name in images:
+            img = cv.imread(name)
+            ret, corners = cv.findChessboardCorners(img, self.chessboard_size, None)
+            if ret is True:
+                ind = name.find('_') + 1
+                img_index = int(name[ind:-4])
+                if name.find('left') >= 0:
+                    indices["left"].append(img_index)
+                elif name.find("right") >= 0:
+                    indices["right"].append(img_index)
+
+        # extract images where the pattern is visible in both cameras to separate list
+        for left_index in indices["left"]:
+            try:
+                indices["right"].index(left_index)
+            except ValueError:
+                continue
+            indices["left right"].append(left_index)
+            indices["left"].remove(left_index)
+            indices["right"].remove(left_index)
+
+        # save indices to files
+        indices_folder = 'indices'
+        if not os.path.exists(indices_folder):
+            os.makedirs(indices_folder)     # create dir if it does not exist
+        for key in indices:
+            write_indices(folder, indices_folder, key, indices[key])
+
+        if show:
+            print(f'both cameras: {indices["both"]}')
+            print(f'just left camera: {indices["left"]}')
+            print(f'just right camera: {indices["right"]}')
+        return
 
 
 def extract_calibration_parameters(file, show):
@@ -21,6 +89,7 @@ def extract_calibration_parameters(file, show):
     # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
     obj_p = np.zeros((6*8, 3), np.float32)
     obj_p[:, :2] = np.mgrid[0:8, 0:6].T.reshape(-1, 2)
+    obj_p *= 28.67
     # Arrays to store object points and image points from all the images.
     obj_points = []  # 3d point in real world space
     img_points = []  # 2d points in image plane.
@@ -72,6 +141,7 @@ def calibrate_stereo_camera_system(file, show):
     # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
     obj_p = np.zeros((6*8, 3), np.float32)
     obj_p[:, :2] = np.mgrid[0:8, 0:6].T.reshape(-1, 2)
+    obj_p *= 28.67
     # Arrays to store object points and image points from all the images.
     obj_points = []  # 3d point in real world space
     img_points_l = []  # 2d points in left camera image plane.
@@ -158,8 +228,8 @@ def write_params(mtx, dist):
     mtx_json = mtx.tolist()
     dist_json = dist.tolist()
     dictionary = {
-        'mtx': mtx_json,
-        'dist': dist_json
+        "mtx": mtx_json,
+        "dist": dist_json
     }
     file = open('calib_params.txt', 'w')
     file.write(json.dumps(dictionary))
