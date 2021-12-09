@@ -42,4 +42,4 @@ def read_params(params_file):
     return mtx, dist
 
 
-remove_distortion_from_image('s1\\left_146.png', 'calib_params.txt', True)
+remove_distortion_from_image('s1\\left_146.png', 'calibration_params.json', True)

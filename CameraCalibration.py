@@ -1,28 +1,29 @@
 import numpy as np
 import cv2 as cv
-from file_utils import write_indices_to_file as write_indices
-from file_utils import read_images
-import json
+from file_utils import write_indices_to_file as write_indices, \
+    write_calibration_params_to_file as write_params, \
+    read_images
 import os
 import glob
 
 
 class CameraCalibration:
     def __init__(self, chessboard_size, field_size):
+        self._indices_folder = 'indices'
         self.chessboard_size = chessboard_size
         w = chessboard_size[0]
         h = chessboard_size[1]
         # termination criteria
         self.criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
         # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
-        self.object_points = np.zeros((w*h, 3), np.float32)
-        self.object_points[:, :2] = np.mgrid[0:w, 0:h].T.reshape(-1, 2)
-        self.object_points *= field_size
+        self._obj_p = np.zeros((w * h, 3), np.float32)
+        self._obj_p[:, :2] = np.mgrid[0:w, 0:h].T.reshape(-1, 2)
+        self._obj_p *= field_size
         # Arrays to store object points and image points from all the images.
         self.obj_points = []  # 3d point in real world space
         self.img_points = []  # 2d points in image plane.
 
-    def split_images(self, folder, show):
+    def split_images(self, folder, show=False):
         """
         Splits PNG images from given folder based on criteria
         if calibration board visible on left, right or both cameras
@@ -40,15 +41,19 @@ class CameraCalibration:
         }
         # save indices of images where the pattern is visible in left or right camera in proper lists
         for name in images:
-            img = cv.imread(name)
-            ret, corners = cv.findChessboardCorners(img, self.chessboard_size, None)
-            if ret is True:
-                ind = name.find('_') + 1
-                img_index = int(name[ind:-4])
-                if name.find('left') >= 0:
-                    indices["left"].append(img_index)
-                elif name.find("right") >= 0:
-                    indices["right"].append(img_index)
+            try:
+                print(f'searching chessboard in \'{name}\'...')
+                img = cv.imread(name)
+                ret, corners = cv.findChessboardCorners(img, self.chessboard_size, None)
+                if ret is True:
+                    ind = name.find('_') + 1
+                    img_index = int(name[ind:-4])
+                    if name.find('left') >= 0:
+                        indices["left"].append(img_index)
+                    elif name.find("right") >= 0:
+                        indices["right"].append(img_index)
+            except cv.error:
+                print(f'OpenCV error occurred while searching chessboard - skipping image {name}')
 
         # extract images where the pattern is visible in both cameras to separate list
         for left_index in indices["left"]:
@@ -61,72 +66,70 @@ class CameraCalibration:
             indices["right"].remove(left_index)
 
         # save indices to files
-        indices_folder = 'indices'
-        if not os.path.exists(indices_folder):
-            os.makedirs(indices_folder)     # create dir if it does not exist
+        if not os.path.exists(self._indices_folder):
+            os.makedirs(self._indices_folder)     # create dir if it does not exist yet
         for key in indices:
-            write_indices(folder, indices_folder, key, indices[key])
+            print(f'writing indices for {key} to file...')
+            write_indices(folder, self._indices_folder, key, indices[key])
 
         if show:
-            print(f'both cameras: {indices["both"]}')
+            print(f'both cameras: {indices["left right"]}')
             print(f'just left camera: {indices["left"]}')
             print(f'just right camera: {indices["right"]}')
         return
 
+    def calibrate_single_camera(self, indices_file, show=False):
+        """
+        Extracts camera calibration parameters
+        :param indices_file: file with info about images to read (created with split_images function)
+        :type indices_file: str
+        :param show: if the progress should be displayed
+        :type show: bool
+        :return: json calibration and distortion matrices
+        :rtype: tuple
+        """
+        print('reading images from file...')
+        images = read_images(self._indices_folder, indices_file)
+        for name in images:
+            try:
+                print(f'searching chessboard in \'{name}\'...')
+                img = cv.imread(name)
+                gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+                # Find the chess board corners
+                ret, corners = cv.findChessboardCorners(gray, self.chessboard_size, None)
+                # If found, add object points, image points (after refining them)
+                if ret is True:
+                    self.obj_points.append(self._obj_p)
+                    corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), self.criteria)
+                    self.img_points.append(corners)
 
-def extract_calibration_parameters(file, show):
-    """
-    Extracts camera calibration parameters
-    :param file: file with info about images to read (created with split_images function)
-    :type file: str
-    :param show: if the progress should be displayed
-    :type show: bool
-    :return: json calibration and distortion matrices
-    :rtype: tuple
-    """
-    # termination criteria
-    criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-    # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
-    obj_p = np.zeros((6*8, 3), np.float32)
-    obj_p[:, :2] = np.mgrid[0:8, 0:6].T.reshape(-1, 2)
-    obj_p *= 28.67
-    # Arrays to store object points and image points from all the images.
-    obj_points = []  # 3d point in real world space
-    img_points = []  # 2d points in image plane.
+                    if show:
+                        # Draw and display the corners
+                        cv.drawChessboardCorners(img, (8, 6), corners2, ret)
+                        cv.imshow('img', img)
+                        cv.waitKey(0)
+            except cv.error:
+                print(f'OpenCV error occurred while searching chessboard - skipping image {name}')
 
-    images = read_images(file)
-
-    for name in images:
-        img = cv.imread(name)
-        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-        # Find the chess board corners
-        ret, corners = cv.findChessboardCorners(gray, (8, 6), None)
-        # If found, add object points, image points (after refining them)
-        if ret is True:
-            obj_points.append(obj_p)
-            corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-            img_points.append(corners)
+        # get calibration parameters
+        print('calibrating camera...')
+        try:
+            ret, mtx, dist, r_vectors, t_vectors = cv.calibrateCamera(
+                self.obj_points, self.img_points, gray.shape[::-1], None, None
+            )
+            mtx_json, dist_json = write_params(mtx, dist)
             if show:
-                # Draw and display the corners
-                cv.drawChessboardCorners(img, (8, 6), corners2, ret)
-                cv.imshow('img', img)
-                cv.waitKey(0)
+                print(f'camera matrix: {mtx_json}')
+                print(f'distortion matrix: {dist_json}')
 
-    # get calibration parameters
-    ret, mtx, dist, r_vectors, t_vectors = cv.calibrateCamera(obj_points, img_points, gray.shape[::-1], None, None)
-    print(mtx)
-    print(mtx.shape)
-
-    mtx_json, dist_json = write_params(mtx, dist)
-    if show:
-        print(f'camera matrix: {mtx_json}')
-        print(f'distortion matrix: {dist_json}')
-
-    cv.destroyAllWindows()
-    return mtx_json, dist_json
+            cv.destroyAllWindows()
+            return mtx_json, dist_json
+        except NameError:
+            print('no images found to calibrate the camera')
+            return
 
 
-def calibrate_stereo_camera_system(file, show):
+def calibrate_stereo_camera_system(file, show=False):
     """
     Calibrates stereo camera system
     :param file: file with info about images to read (created with split_images function)
@@ -148,7 +151,7 @@ def calibrate_stereo_camera_system(file, show):
     img_points_r = []  # 2d points in right camera image plane.
     img_shape = None
 
-    images = read_images(file)
+    images = read_images('indices', file)
 
     for i, name in enumerate(images[::2]):
         img_l = cv.imread(images[2 * i])
@@ -222,20 +225,3 @@ def calibrate_stereo_camera_system(file, show):
         'E': E,
         'F': F
     }
-
-
-def write_params(mtx, dist):
-    mtx_json = mtx.tolist()
-    dist_json = dist.tolist()
-    dictionary = {
-        "mtx": mtx_json,
-        "dist": dist_json
-    }
-    file = open('calib_params.txt', 'w')
-    file.write(json.dumps(dictionary))
-
-    return mtx_json, dist_json
-
-
-# extract_calibration_parameters(os.path.join('indices', 'indices_both_s1.txt'), True)
-calibrate_stereo_camera_system(os.path.join('indices', 'indices_both_s1.txt'), False)
