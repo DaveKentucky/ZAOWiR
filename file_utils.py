@@ -1,5 +1,6 @@
 import os
 import json
+import numpy as np
 
 
 def write_indices_to_file(source_folder, target_folder, cameras, indices):
@@ -55,23 +56,33 @@ def read_images(source_folder, filename):
     return images_filenames
 
 
-def write_calibration_params_to_file(mtx, dist):
+def write_calibration_params_to_file(matrices, output_file):
     """
-    Write calibration camera parameters to JSON file
-    :param mtx: camera matrix
-    :type mtx: numpy.ndarray
-    :param dist: distortion matrix
-    :type dist: numpy.ndarray
-    :return: camera matrix and distortion matrix in JSON format
-    :rtype: tuple
+    Writes camera calibration parameters to JSON file
+    :param matrices: dictionary with parameters stored in numpy arrays
+    :type matrices: dict
+    :param output_file: name of the output file
+    :type output_file: str
+    :return: dictionary with parameters matrices converted into JSON format
+    :rtype: dict
     """
-    mtx_json = mtx.tolist()
-    dist_json = dist.tolist()
-    dictionary = {
-        "mtx": mtx_json,
-        "dist": dist_json
-    }
-    file = open('calibration_params.json', 'w')
-    file.write(json.dumps(dictionary))
+    for key in matrices:
+        matrices[key] = matrices[key].tolist()
+    with open(output_file, 'w') as file:
+        file.write(json.dumps(matrices))
+    return matrices
 
-    return mtx_json, dist_json
+
+def read_calibration_params_from_file(params_file):
+    """
+    Reads camera calibration parameters from JSON file
+    :param params_file: name of the input file with parameters
+    :type params_file: str
+    :return: dictionary with parameters matrices converted into numpy arrays
+    :rtype: dict
+    """
+    with open(params_file) as file:
+        data = json.load(file)
+        for key in data:
+            data[key] = np.array(data[key])
+    return data
