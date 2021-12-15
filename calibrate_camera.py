@@ -1,4 +1,4 @@
-from CameraCalibration import CameraCalibration
+from camera_calibration import CameraCalibration
 
 
 cc = CameraCalibration((8, 6), 28.67)
