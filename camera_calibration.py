@@ -3,13 +3,21 @@ import cv2 as cv
 from file_utils import write_indices_to_file as write_indices, \
     write_calibration_params_to_file as write_params, \
     read_images, \
-    read_calibration_params_from_file as read_params
+    read_calibration_params_from_file as read_params, \
+    write_images
 import os
 import glob
 
 
 class CameraCalibration:
     def __init__(self, chessboard_size, field_size):
+        """
+        Creates CameraCalibration object for calibrating single or double camera systems
+        :param chessboard_size: number of rowns and columns of the chessboard pattern
+        :type chessboard_size: tuple
+        :param field_size: real size of a single chessboard field
+        :type field_size: float
+        """
         self._indices_folder = 'indices'
         self.chessboard_size = chessboard_size
         w = chessboard_size[0]
@@ -141,11 +149,11 @@ class CameraCalibration:
             print('no images found to calibrate the camera')
             return {}
 
-    def calibrate_stereo_camera_system(self, file, show=False):
+    def calibrate_stereo_camera_system(self, indices_file, show=False):
         """
         Calibrates stereo camera system
-        :param file: file with info about images to read (created with split_images function)
-        :type file: str
+        :param indices_file: file with info about images to read (created with split_images function)
+        :type indices_file: str
         :param show: if the progress should be displayed
         :type show: bool
         :return: dictionary with calibration params in JSON format
@@ -154,7 +162,7 @@ class CameraCalibration:
         self.obj_points = []    # make sure obj_points list is empty
         img_shape = None
 
-        images = read_images(self._indices_folder, file)
+        images = read_images(self._indices_folder, indices_file)
 
         for i, name in enumerate(images[::2]):
             try:
@@ -236,38 +244,52 @@ class CameraCalibration:
         print('E', params_json["E"])
         print('F', params_json["F"])
 
+        baseline = np.linalg.norm(self.stereo_camera_params['T'])
+        print(baseline)
+
         cv.destroyAllWindows()
         return params_json
 
-    def remove_distortion_from_image(self, image, params_file=None, show=False):
+    def remove_distortion_from_images(self, indices_file, output_folder, params_file=None, show=False):
         """
-        Removes distortion from image with given parameters
-        :param image: path to image to remove distortion from
-        :type image: str
+        Removes distortion from images with given parameters
+        :param indices_file: file with info about images to read (created with split_images function)
+        :type indices_file: str
+        :param output_folder: path to folder for undistorted images
+        :type output_folder: str
         :param params_file: path to file with camera matrix and distortion matrix or None if saved params should be used
         :type params_file: str
         :param show: if the progress should be displayed
         :type show: bool
-        :return: image with distortion removed
-        :rtype: np.ndarray
+        :return: list of images with distortion removed
+        :rtype: list
         """
+        images = read_images(self._indices_folder, indices_file)
         params = read_params(params_file) if params_file else self.single_camera_params     # read camera params
-        img = cv.imread(image)  # read image
-        # refine the camera matrix with given calibration params
-        h, w = img.shape[:2]
-        camera_matrix, roi = cv.getOptimalNewCameraMatrix(params["mtx"], params["dist"], (w, h), 1, (w, h))
-        # remove distortion from image
-        dst = cv.undistort(img, params["mtx"], params["dist"], None, camera_matrix)
-        x1, y1, w1, h1 = roi
-        dst = dst[y1:y1 + h1, x1:x1 + w1]
-        dst = cv.resize(dst, (w, h))
+        result_images = []
 
-        if show:
-            scale = 0.7
-            img_resized = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))
-            dst_resized = cv.resize(dst, (int(dst.shape[1] * scale), int(dst.shape[0] * scale)))
-            images = np.hstack((img_resized, dst_resized))
-            cv.imshow('distortion removed', images)
-            cv.waitKey(0)
+        for image in images:
+            img = cv.imread(image)  # read image
+            # refine the camera matrix with given calibration params
+            h, w = img.shape[:2]
+            camera_matrix, roi = cv.getOptimalNewCameraMatrix(params["mtx"], params["dist"], (w, h), 1, (w, h))
+            # remove distortion from image
+            dst = cv.undistort(img, params["mtx"], params["dist"], None, camera_matrix)
+            x1, y1, w1, h1 = roi
+            dst = dst[y1:y1 + h1, x1:x1 + w1]
+            dst = cv.resize(dst, (w, h))
+            result_images.append(dst)
 
-        return dst
+            if show:
+                scale = 0.7
+                img_resized = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))
+                dst_resized = cv.resize(dst, (int(dst.shape[1] * scale), int(dst.shape[0] * scale)))
+                images = np.hstack((img_resized, dst_resized))
+                cv.imshow('distortion removed', images)
+                cv.waitKey(0)
+
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+        write_images(output_folder, result_images, images)
+
+        return result_images

@@ -1,6 +1,7 @@
 import os
 import json
 import numpy as np
+import cv2 as cv
 
 
 def write_indices_to_file(source_folder, target_folder, cameras, indices):
@@ -34,7 +35,7 @@ def read_images(source_folder, filename):
     :type source_folder: str
     :param filename: file with info about images to read (created with split_images function)
     :type filename: str
-    :return: list of image files to calibrate
+    :return: list of image filenamess to calibrate
     :rtype: list
     """
     # read file contents
@@ -86,3 +87,11 @@ def read_calibration_params_from_file(params_file):
         for key in data:
             data[key] = np.array(data[key])
     return data
+
+
+def write_images(target_folder, images, names):
+    for i, image in enumerate(images):
+        filename = os.path.join(target_folder, names[i][3:])
+        print(filename)
+        cv.imwrite(filename, image)
+    return
