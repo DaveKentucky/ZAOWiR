@@ -110,7 +110,7 @@ class CameraCalibration:
                 if ret is True:
                     self.obj_points.append(self._obj_p)
                     corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), self.criteria)
-                    self.img_points.append(corners)
+                    self.img_points.append(corners2)
 
                     if show:
                         # Draw and display the corners
@@ -215,14 +215,14 @@ class CameraCalibration:
             criteria=stereo_calibration_criteria
         )
         self.stereo_camera_params = {
-            'mtx_l': mtx_l,
-            'dts_l': dst_l,
-            'mtx_r': mtx_r,
-            'dst_r': dst_r,
-            'R': R,
-            'T': T,
-            'E': E,
-            'F': F
+            'mtx_l': mtx_l,     # first camera matrix
+            'dts_l': dst_l,     # first camera distortion matrix
+            'mtx_r': mtx_r,     # second camera matrix
+            'dst_r': dst_r,     # second camera distortion matrix
+            'R': R,             # rotation matrix
+            'T': T,             # translation matrix
+            'E': E,             # essential matrix
+            'F': F              # fundamental matrix
         }
         params_json = write_params(self.stereo_camera_params, 'calibration_params_stereo.json')
 
