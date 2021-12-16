@@ -216,7 +216,7 @@ class CameraCalibration:
         )
         self.stereo_camera_params = {
             'mtx_l': mtx_l,     # first camera matrix
-            'dts_l': dst_l,     # first camera distortion matrix
+            'dst_l': dst_l,     # first camera distortion matrix
             'mtx_r': mtx_r,     # second camera matrix
             'dst_r': dst_r,     # second camera distortion matrix
             'R': R,             # rotation matrix
