@@ -19,6 +19,7 @@ class CameraCalibration:
         :type field_size: float
         """
         self._indices_folder = 'indices'
+        self._image_size = ()
         self.chessboard_size = chessboard_size
         w = chessboard_size[0]
         h = chessboard_size[1]
@@ -35,6 +36,7 @@ class CameraCalibration:
         self.img_points_r = []  # 2d points in image plane for right camera image
         self.single_camera_params = {}
         self.stereo_camera_params = {}
+        self.rectification_params = {}
 
     def split_images(self, folder, show=False):
         """
@@ -52,6 +54,10 @@ class CameraCalibration:
             "right": [],
             "left right": []
         }
+        # save image size
+        first_img = cv.imread(images[0])
+        size = first_img.shape
+        self._image_size = (size[1], size[0])
         # save indices of images where the pattern is visible in left or right camera in proper lists
         for name in images:
             try:
@@ -245,7 +251,7 @@ class CameraCalibration:
         print('F', params_json["F"])
 
         baseline = np.linalg.norm(self.stereo_camera_params['T'])
-        print(baseline)
+        print(f'Cameras\' baseline: {baseline}')
 
         cv.destroyAllWindows()
         return params_json
@@ -283,15 +289,113 @@ class CameraCalibration:
         """
         images = read_images(self._indices_folder, indices_file)
         params = read_params(params_file) if params_file else self.single_camera_params     # read camera params
+        params_left = {
+            "mtx": params["mtx_l"],
+            "dist": params["dst_l"]
+        }
+        params_right = {
+            "mtx": params["mtx_r"],
+            "dist": params["dst_r"]
+        }
         result_images = []
 
-        for image in images:
-            result_image = undistort_image(image, params, show)
+        for i, image in enumerate(images):
+            p = params_left if i % 2 == 0 else params_right
+            result_image = undistort_image(image, p, show)
             result_images.append(result_image)
 
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
         write_images(output_folder, result_images, images)
+
+        return result_images
+
+    def rectify_stereo_camera_system(self, params_file=None):
+        """
+        Counts rectification maps for stereo camera system
+        :param params_file: path to file with calibration params or None if saved params should be used
+        :type params_file: str
+        :return: dictionary with rectification maps in JSON format
+        :rtype: dict
+        """
+        params = read_params(params_file) if params_file else self.stereo_camera_params     # read cameras params
+        # get rectification, projection and disparity matrices
+        R1, R2, P1, P2, Q, roi_left, roi_right = cv.stereoRectify(
+            params["mtx_l"],
+            params["dst_l"],
+            params["mtx_r"],
+            params["dst_r"],
+            self._image_size,
+            params["R"],
+            params["T"],
+            flags=cv.CALIB_ZERO_DISPARITY,
+            alpha=0.0
+        )
+        # get distortion and rectification transformation maps for left camera
+        map1_l, map2_l = cv.initUndistortRectifyMap(
+            params["mtx_l"],
+            params["dst_l"],
+            R1,
+            P1,
+            self._image_size,
+            cv.CV_32FC1
+        )
+        # get distortion and rectification transformation maps for right camera
+        map1_r, map2_r = cv.initUndistortRectifyMap(
+            params["mtx_r"],
+            params["dst_r"],
+            R2,
+            P2,
+            self._image_size,
+            cv.CV_32FC1
+        )
+
+        self.rectification_params = {
+            "dst_map_l": map1_l,
+            "rect_map_l": map2_l,
+            "dst_map_r": map1_r,
+            "rect_map_r": map2_r
+        }
+
+        params_json = write_params(self.rectification_params, 'rectification_params.json')
+        print('dst_map_l', params_json["dst_map_l"])
+        print('rect_map_l', params_json["rect_map_l"])
+        print('dst_map_r', params_json["dst_map_r"])
+        print('rect_map_r', params_json["rect_map_r"])
+
+        return params_json
+
+    def rectify_images(self, indices_file, params_file=None, show=False):
+        """
+        Rectifies set of images
+        :param indices_file: file with info about images to read (created with split_images function)
+        :type indices_file: str
+        :param params_file: path to file with rectification maps or None if saved params should be used
+        :type params_file: str
+        :param show: if the progress should be displayed
+        :type show: bool
+        :return: list of rectified images
+        :rtype: list
+        """
+        images = read_images(self._indices_folder, indices_file)
+        params = read_params(params_file) if params_file else self.rectification_params     # read rectification params
+        params_left = {
+            "dist": params["dst_map_l"],
+            "rect": params["rect_map_l"]
+        }
+        params_right = {
+            "dist": params["dst_map_r"],
+            "rect": params["rect_map_r"]
+        }
+        result_images = []
+
+        for i, image in enumerate(images):
+            p = params_left if i % 2 == 0 else params_right
+            result_image = cv.remap(image, p["dist"], p["rect"], cv.INTER_LINEAR)
+            result_images.append(result_image)
+
+            if show:
+                cv.imshow('rectified image', result_image)
 
         return result_images
 
