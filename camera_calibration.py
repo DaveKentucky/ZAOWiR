@@ -252,7 +252,7 @@ class CameraCalibration:
 
     def remove_distortion_from_image(self, image, params_file=None, show=False):
         """
-        Removes distortion from a single image with given parameters
+        Removes distortion from a single image
         :param image: path to image that should have distortion removed
         :type image: str
         :param params_file: path to file with camera matrix and distortion matrix or None if saved params should be used
@@ -269,7 +269,7 @@ class CameraCalibration:
 
     def remove_distortion_from_images(self, indices_file, output_folder, params_file=None, show=False):
         """
-        Removes distortion from set of images with given parameters
+        Removes distortion from set of images
         :param indices_file: file with info about images to read (created with split_images function)
         :type indices_file: str
         :param output_folder: path to folder for undistorted images
@@ -296,7 +296,19 @@ class CameraCalibration:
         return result_images
 
 
+# static functions
 def undistort_image(image, params, show):
+    """
+    Removes distortion from a single image with given parameters
+    :param image: path to image that should have distortion removed
+    :type image: str
+    :param params: camera matrix and distortion matrix
+    :type params: dict
+    :param show: if the progress should be displayed
+    :type show: bool
+    :return: an image with distortion removed
+    :rtype: np.ndarray
+    """
     img = cv.imread(image)  # read image
     # refine the camera matrix with given calibration params
     h, w = img.shape[:2]
