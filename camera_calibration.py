@@ -250,9 +250,26 @@ class CameraCalibration:
         cv.destroyAllWindows()
         return params_json
 
+    def remove_distortion_from_image(self, image, params_file=None, show=False):
+        """
+        Removes distortion from a single image with given parameters
+        :param image: path to image that should have distortion removed
+        :type image: str
+        :param params_file: path to file with camera matrix and distortion matrix or None if saved params should be used
+        :type params_file: str
+        :param show: if the progress should be displayed
+        :type show: bool
+        :return: an image with distortion removed
+        :rtype: np.ndarray
+        """
+        params = read_params(params_file) if params_file else self.single_camera_params     # read camera params
+        result_image = undistort_image(image, params, show)
+
+        return result_image
+
     def remove_distortion_from_images(self, indices_file, output_folder, params_file=None, show=False):
         """
-        Removes distortion from images with given parameters
+        Removes distortion from set of images with given parameters
         :param indices_file: file with info about images to read (created with split_images function)
         :type indices_file: str
         :param output_folder: path to folder for undistorted images
@@ -269,27 +286,33 @@ class CameraCalibration:
         result_images = []
 
         for image in images:
-            img = cv.imread(image)  # read image
-            # refine the camera matrix with given calibration params
-            h, w = img.shape[:2]
-            camera_matrix, roi = cv.getOptimalNewCameraMatrix(params["mtx"], params["dist"], (w, h), 1, (w, h))
-            # remove distortion from image
-            dst = cv.undistort(img, params["mtx"], params["dist"], None, camera_matrix)
-            x1, y1, w1, h1 = roi
-            dst = dst[y1:y1 + h1, x1:x1 + w1]
-            dst = cv.resize(dst, (w, h))
-            result_images.append(dst)
-
-            if show:
-                scale = 0.7
-                img_resized = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))
-                dst_resized = cv.resize(dst, (int(dst.shape[1] * scale), int(dst.shape[0] * scale)))
-                images = np.hstack((img_resized, dst_resized))
-                cv.imshow('distortion removed', images)
-                cv.waitKey(0)
+            result_image = undistort_image(image, params, show)
+            result_images.append(result_image)
 
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
         write_images(output_folder, result_images, images)
 
         return result_images
+
+
+def undistort_image(image, params, show):
+    img = cv.imread(image)  # read image
+    # refine the camera matrix with given calibration params
+    h, w = img.shape[:2]
+    camera_matrix, roi = cv.getOptimalNewCameraMatrix(params["mtx"], params["dist"], (w, h), 1, (w, h))
+    # remove distortion from image
+    dst = cv.undistort(img, params["mtx"], params["dist"], None, camera_matrix)
+    x1, y1, w1, h1 = roi
+    dst = dst[y1:y1 + h1, x1:x1 + w1]
+    dst = cv.resize(dst, (w, h))
+
+    if show:
+        scale = 0.7
+        img_resized = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))
+        dst_resized = cv.resize(dst, (int(dst.shape[1] * scale), int(dst.shape[0] * scale)))
+        images = np.hstack((img_resized, dst_resized))
+        cv.imshow('distortion removed', images)
+        cv.waitKey(0)
+
+    return dst
