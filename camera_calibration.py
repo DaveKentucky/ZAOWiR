@@ -10,16 +10,23 @@ import glob
 
 
 class CameraCalibration:
-    def __init__(self, chessboard_size, field_size):
+    def __init__(self, chessboard_size, field_size, images_folder):
         """
         Creates CameraCalibration object for calibrating single or double camera systems
         :param chessboard_size: number of rowns and columns of the chessboard pattern
         :type chessboard_size: tuple
         :param field_size: real size of a single chessboard field
         :type field_size: float
+        :param images_folder: folder with input images
+        :type images_folder: str
         """
         self._indices_folder = 'indices'
-        self._image_size = ()
+        # save image size
+        images = glob.glob(f'{images_folder}/*.png')
+        first_img = cv.imread(images[0])
+        size = first_img.shape
+        self._image_size = (size[1], size[0])
+        # save chessboard size
         self.chessboard_size = chessboard_size
         w = chessboard_size[0]
         h = chessboard_size[1]
@@ -54,10 +61,7 @@ class CameraCalibration:
             "right": [],
             "left right": []
         }
-        # save image size
-        first_img = cv.imread(images[0])
-        size = first_img.shape
-        self._image_size = (size[1], size[0])
+
         # save indices of images where the pattern is visible in left or right camera in proper lists
         for name in images:
             try:
@@ -310,11 +314,13 @@ class CameraCalibration:
 
         return result_images
 
-    def rectify_stereo_camera_system(self, params_file=None):
+    def rectify_stereo_camera_system(self, indices_file, params_file=None, show=False):
         """
         Counts rectification maps for stereo camera system
         :param params_file: path to file with calibration params or None if saved params should be used
         :type params_file: str
+        :param show: if the progress should be displayed
+        :type show: bool
         :return: dictionary with rectification maps in JSON format
         :rtype: dict
         """
@@ -358,10 +364,23 @@ class CameraCalibration:
         }
 
         params_json = write_params(self.rectification_params, 'rectification_params.json')
-        print('dst_map_l', params_json["dst_map_l"])
-        print('rect_map_l', params_json["rect_map_l"])
-        print('dst_map_r', params_json["dst_map_r"])
-        print('rect_map_r', params_json["rect_map_r"])
+        if show:
+            print('dst_map_l', params_json["dst_map_l"])
+            print('rect_map_l', params_json["rect_map_l"])
+            print('dst_map_r', params_json["dst_map_r"])
+            print('rect_map_r', params_json["rect_map_r"])
+
+        # try this instead of separate methods
+        images = read_images(self._indices_folder, indices_file)
+        for i, image in enumerate(images):
+            img = cv.imread(image)
+            p = map1_l, map2_l if i % 2 == 0 else map1_r, map2_r
+            # map1, map2 = cv.convertMaps(p["dist"], p["rect"], dstmap1type=cv.CV_32FC2)
+
+            result_image = cv.remap(img, p[0], p[1], cv.INTER_LINEAR)
+
+            cv.imshow('rectified image', result_image)
+            cv.waitKey(0)
 
         return params_json
 
@@ -380,18 +399,23 @@ class CameraCalibration:
         images = read_images(self._indices_folder, indices_file)
         params = read_params(params_file) if params_file else self.rectification_params     # read rectification params
         params_left = {
-            "dist": params["dst_map_l"],
-            "rect": params["rect_map_l"]
+            "dist": np.array(params["dst_map_l"]),
+            "rect": np.array(params["rect_map_l"])
         }
         params_right = {
-            "dist": params["dst_map_r"],
-            "rect": params["rect_map_r"]
+            "dist": np.array(params["dst_map_r"]),
+            "rect": np.array(params["rect_map_r"])
         }
         result_images = []
 
         for i, image in enumerate(images):
+            img = cv.imread(image)
             p = params_left if i % 2 == 0 else params_right
-            result_image = cv.remap(image, p["dist"], p["rect"], cv.INTER_LINEAR)
+            map1, map2 = cv.convertMaps(p["dist"], p["rect"], dstmap1type=cv.CV_32FC2)
+            # map1, map2 = p["dist"], p["rect"]
+
+            print(type(p["dist"]))
+            result_image = cv.remap(img, map1, map2, cv.INTER_LINEAR)
             result_images.append(result_image)
 
             if show:
