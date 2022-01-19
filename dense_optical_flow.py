@@ -2,6 +2,7 @@ import numpy as np
 import cv2 as cv
 import random
 import argparse
+import time
 
 
 parser = argparse.ArgumentParser()
@@ -13,8 +14,10 @@ ret, frame1 = cap.read()
 prvs = cv.cvtColor(frame1, cv.COLOR_BGR2GRAY)
 hsv = np.zeros_like(frame1)
 hsv[..., 1] = 255
+execution_times = []
 
 while True:
+    start_time = time.time()
     ret, frame2 = cap.read()
     nxt = cv.cvtColor(frame2, cv.COLOR_BGR2GRAY)
     flow = cv.calcOpticalFlowFarneback(prvs, nxt, None, 0.5, 3, 15, 3, 5, 1.2, 0)
@@ -44,6 +47,8 @@ while True:
 
     # Obtain matches using K-Nearest Neighbor Method
     # the result 'matches' is the number of similar matches found in both images
+    if descriptors_1 is None or descriptors_2 is None:
+        continue
     matches = flann.knnMatch(descriptors_1, descriptors_2, k=2)
 
     # Store good matches using Lowe's ratio test
@@ -81,6 +86,8 @@ while True:
         cv.rectangle(drawing, (int(boundRect[i][0]), int(boundRect[i][1])), \
                      (int(boundRect[i][0] + boundRect[i][2]), int(boundRect[i][1] + boundRect[i][3])), color, 2)
 
+    execution_times.append(time.time() - start_time)
+
     cv.imshow('Objects', drawing)
 
     cv.imshow('frame2', bgr)
@@ -92,3 +99,5 @@ while True:
         cv.imwrite('opticalfb.png', frame2)
         cv.imwrite('opticalhsv.png', bgr)
     prvs = nxt
+
+print(f'Mean execution time: {sum(execution_times) / len(execution_times)}')
