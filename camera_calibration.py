@@ -374,10 +374,10 @@ class CameraCalibration:
         images = read_images(self._indices_folder, indices_file)
         for i, image in enumerate(images):
             img = cv.imread(image)
-            p = map1_l, map2_l if i % 2 == 0 else map1_r, map2_r
-            # map1, map2 = cv.convertMaps(p["dist"], p["rect"], dstmap1type=cv.CV_32FC2)
-
-            result_image = cv.remap(img, p[0], p[1], cv.INTER_LINEAR)
+            if i %2 == 0:
+                result_image = cv.remap(img, map1_l, map2_l, cv.INTER_LINEAR)
+            else:
+                result_image = cv.remap(img, map1_r, map2_r, cv.INTER_LINEAR)
 
             cv.imshow('rectified image', result_image)
             cv.waitKey(0)
