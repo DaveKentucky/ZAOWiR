@@ -70,12 +70,63 @@ def calculate_disparity_matrix(img1, img2):
     plt.imshow(disparity, cmap='gray', vmin=0, vmax=255)
     plt.show()
 
+    return disparity
 
-img_left = cv.imread('cones/im2.png', 0)
-img_right = cv.imread('cones/im6.png', 0)
+
+def write_ply(fn, vertices, colors):
+    ply_header = '''ply
+        format ascii 1.0
+        element vertex %(vert_num)d
+        property float x
+        property float y
+        property float z
+        property uchar red
+        property uchar green
+        property uchar blue
+        end_header
+        '''
+    vertices = vertices.reshape(-1, 3)
+
+    colors = colors.reshape(-1, 3)
+    vertices = np.hstack([vertices, colors])
+    with open(fn, 'wb') as f:
+        f.write((ply_header % dict(vert_num=len(vertices))).encode('utf-8'))
+        np.savetxt(f, vertices, fmt='%f %f %f %d %d %d ')
+
+
+def create_points_cloud(img, disparity, focal=None):
+    disparity = cv.normalize(disparity, 0, 255, cv.NORM_MINMAX)
+    h, w = img.shape[:2]
+    f = 0.8 * w if focal is None else focal
+    Q = np.float32([[1, 0, 0, -0.5 * w],
+                    [0, -1, 0, 0.5 * h],  # turn points 180 deg around x-axis,
+                    [0, 0, 0, -f],  # so that y-axis looks up
+                    [0, 0, 1, 0]])
+    points = cv.reprojectImageTo3D(disparity, Q)
+    colors = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+    mask = disparity > disparity.min()
+    out_points = points[mask]
+    out_colors = colors[mask]
+    out_fn = 'out.ply'
+    write_ply(out_fn, out_points, out_colors)
+    print('%s saved' % out_fn)
+
+
+def read_focal(params):
+    with open(params) as file:
+        data = file.readline()
+        data = data[data.find("[") + 1: data.find("]")]
+        data = data[:data.find(" ")]
+    return float(data)
+
+
+img_left = cv.imread('piano/img0.png', 0)
+img_right = cv.imread('piano/img1.png', 0)
 num_disparities = 128
 block_size = 7
 
 # disparity_stereoBM(img_left, img_right, True)
 # disparity_stereoSGBM(img_left, img_right, True)
-calculate_disparity_matrix(img_left, img_right)
+
+d = calculate_disparity_matrix(img_left, img_right)
+create_points_cloud(img_left, d, read_focal('piano/calib.txt'))

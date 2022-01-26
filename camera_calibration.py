@@ -7,6 +7,7 @@ from file_utils import write_indices_to_file as write_indices, \
     write_images
 import os
 import glob
+import disparity_depth_maps as dd
 
 
 class CameraCalibration:
@@ -44,6 +45,7 @@ class CameraCalibration:
         self.single_camera_params = {}
         self.stereo_camera_params = {}
         self.rectification_params = {}
+        self.baseline = None
 
     def split_images(self, folder, show=False):
         """
@@ -254,8 +256,8 @@ class CameraCalibration:
         print('E', params_json["E"])
         print('F', params_json["F"])
 
-        baseline = np.linalg.norm(self.stereo_camera_params['T'])
-        print(f'Cameras\' baseline: {baseline}')
+        self.baseline = np.linalg.norm(self.stereo_camera_params['T'])
+        print(f'Cameras\' baseline: {self.baseline}')
 
         cv.destroyAllWindows()
         return params_json
