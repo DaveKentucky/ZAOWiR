@@ -8,6 +8,7 @@ from file_utils import write_indices_to_file as write_indices, \
 import os
 import glob
 import disparity_depth_maps as dd
+import math
 
 
 class CameraCalibration:
@@ -46,6 +47,7 @@ class CameraCalibration:
         self.stereo_camera_params = {}
         self.rectification_params = {}
         self.baseline = None
+        self.focal_length = None
 
     def split_images(self, folder, show=False):
         """
@@ -258,6 +260,13 @@ class CameraCalibration:
 
         self.baseline = np.linalg.norm(self.stereo_camera_params['T'])
         print(f'Cameras\' baseline: {self.baseline}')
+        focals = [
+            self.stereo_camera_params['mtx_l'][0][0],
+            self.stereo_camera_params['mtx_l'][1][1],
+            self.stereo_camera_params['mtx_r'][0][0],
+            self.stereo_camera_params['mtx_l'][1][1]
+            ]
+        self.focal_length = np.mean(focals)
 
         cv.destroyAllWindows()
         return params_json
@@ -424,6 +433,18 @@ class CameraCalibration:
                 cv.imshow('rectified image', result_image)
 
         return result_images
+
+    def get_depth_map(self, img_left, img_right, baseline=None, focal_length=None):
+        disparity = dd.calculate_disparity_matrix(img_left, img_right)
+        b = baseline if baseline is not None else self.baseline
+        if focal_length is not None:
+            f = focal_length
+        else:
+            h, w = img_left.shape[:2]
+            f = 0.3 * h / (2 * math.tan(120 * math.pi / 360))
+
+        depth_map = dd.calculate_depth_map(disparity, b, f)
+        return depth_map
 
 
 # static functions

@@ -67,10 +67,23 @@ def calculate_disparity_matrix(img1, img2):
     disparity = np.argmin(disparity_maps, axis=2)
     disparity = np.uint8(disparity * 255 / num_disparities)
     disparity = cv.equalizeHist(disparity)
+
     plt.imshow(disparity, cmap='gray', vmin=0, vmax=255)
     plt.show()
 
     return disparity
+
+
+def calculate_depth_map(disparity, baseline, focal_length):
+    m = baseline * focal_length
+    disparity = disparity / 255
+    rd = np.reciprocal(disparity)
+    depth = m * rd
+
+    plt.imshow(depth, 'gray')
+    plt.show()
+
+    return depth
 
 
 def write_ply(fn, vertices, colors):
@@ -120,13 +133,13 @@ def read_focal(params):
     return float(data)
 
 
-img_left = cv.imread('piano/img0.png', 0)
-img_right = cv.imread('piano/img1.png', 0)
+# img_left = cv.imread('piano/img0.png', 0)
+# img_right = cv.imread('piano/img1.png', 0)
 num_disparities = 128
 block_size = 7
 
 # disparity_stereoBM(img_left, img_right, True)
 # disparity_stereoSGBM(img_left, img_right, True)
 
-d = calculate_disparity_matrix(img_left, img_right)
-create_points_cloud(img_left, d, read_focal('piano/calib.txt'))
+# d = calculate_disparity_matrix(img_left, img_right)
+# create_points_cloud(img_left, d, read_focal('piano/calib.txt'))
